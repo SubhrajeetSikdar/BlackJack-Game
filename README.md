@@ -15,6 +15,7 @@ To play the game, compile the C++ code and run the executable. Follow the prompt
 
 ## How to Play
 
+
 - At the beginning of each round, you will be dealt two cards, and the dealer will be dealt one card face up.
 - You have the option to "hit" (receive another card) or "stand" (end your turn).
 - If your total card value exceeds 21, you bust and lose the round.
