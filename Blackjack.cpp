@@ -1,208 +1,192 @@
+// Blackjack - enhanced console edition (C++17)
+// Build: g++ -std=c++17 -O2 blackjack.cpp -o blackjack
 #include <iostream>
 #include <vector>
 #include <string>
 #include <algorithm>
-#include <ctime>
-#include <cstdlib>
+#include <random>
+#include <limits>
 using namespace std;
 
-int getRandomNumber(int min, int max) {
-    static const double fraction = 1.0 / (static_cast<double>(RAND_MAX) + 1.0);
-    return static_cast<int>(rand() * fraction * (max - min + 1) + min);
-}
-
 class Card {
+public:
+    // Public so Deck can build cards (originally private, which wouldn't compile)
+    enum class Rank { ACE = 1, TWO, THREE, FOUR, FIVE, SIX, SEVEN, EIGHT, NINE, TEN, JACK, QUEEN, KING };
+    enum class Suit { CLUBS, DIAMONDS, HEARTS, SPADES };
+
+    Card(Rank r, Suit s) : m_rank(r), m_suit(s) {}
+
+    string str() const {
+        static const char* ranks[] = {"", "A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"};
+        static const char* suits[] = {"♣", "♦", "♥", "♠"};
+        return string("[") + ranks[static_cast<int>(m_rank)] + suits[static_cast<int>(m_suit)] + "]";
+    }
+
+    int value() const {
+        int r = static_cast<int>(m_rank);
+        if (r == 1) return 11;
+        return r >= 10 ? 10 : r;
+    }
+    bool isAce() const { return m_rank == Rank::ACE; }
+
 private:
-    enum class Rank {
-        ACE = 1, TWO, THREE, FOUR, FIVE, SIX, SEVEN, EIGHT, NINE, TEN,
-        JACK, QUEEN, KING
-    };
-
-    enum class Suit {
-        CLUBS, DIAMONDS, HEARTS, SPADES
-    };
-
     Rank m_rank;
     Suit m_suit;
-
-public:
-    Card(Rank rank = Rank::ACE, Suit suit = Suit::SPADES)
-        : m_rank(rank), m_suit(suit) {}
-
-    void print() const {
-        switch (m_rank) {
-            case Rank::ACE:    cout << 'A'; break;
-            case Rank::TWO:    cout << '2'; break;
-            case Rank::THREE:  cout << '3'; break;
-            case Rank::FOUR:   cout << '4'; break;
-            case Rank::FIVE:   cout << '5'; break;
-            case Rank::SIX:    cout << '6'; break;
-            case Rank::SEVEN:  cout << '7'; break;
-            case Rank::EIGHT:  cout << '8'; break;
-            case Rank::NINE:   cout << '9'; break;
-            case Rank::TEN:    cout << 'T'; break;
-            case Rank::JACK:   cout << 'J'; break;
-            case Rank::QUEEN:  cout << 'Q'; break;
-            case Rank::KING:   cout << 'K'; break;
-        }
-
-        switch (m_suit) {
-            case Suit::CLUBS:    cout << 'C'; break;
-            case Suit::DIAMONDS: cout << 'D'; break;
-            case Suit::HEARTS:   cout << 'H'; break;
-            case Suit::SPADES:   cout << 'S'; break;
-        }
-    }
-
-    int getValue() const {
-        switch (m_rank) {
-            case Rank::TWO:    return 2;
-            case Rank::THREE:  return 3;
-            case Rank::FOUR:   return 4;
-            case Rank::FIVE:   return 5;
-            case Rank::SIX:    return 6;
-            case Rank::SEVEN:  return 7;
-            case Rank::EIGHT:  return 8;
-            case Rank::NINE:   return 9;
-            case Rank::TEN:    return 10;
-            case Rank::JACK:   return 10;
-            case Rank::QUEEN:  return 10;
-            case Rank::KING:   return 10;
-            case Rank::ACE:    return 11;
-        }
-
-        return 0; 
-    }
 };
 
 class Deck {
-private:
-    vector<Card> m_deck;
-
 public:
-    Deck() {
-        for (int suit = 0; suit < 4; ++suit) {
-            for (int rank = 1; rank <= 13; ++rank) {
-                m_deck.push_back(Card(static_cast<Card::Rank>(rank), static_cast<Card::Suit>(suit)));
-            }
-        }
+    Deck() { reset(); }
+
+    void reset() {
+        m_cards.clear();
+        for (int s = 0; s < 4; ++s)
+            for (int r = 1; r <= 13; ++r)
+                m_cards.emplace_back(static_cast<Card::Rank>(r), static_cast<Card::Suit>(s));
+        shuffle(m_cards.begin(), m_cards.end(), m_rng);
     }
 
-    void print() const {
-        for (const auto &card : m_deck) {
-            card.print();
-            cout << ' ';
+    // Returns by value: the original returned a reference to a popped element (dangling)
+    Card deal() {
+        if (m_cards.size() < 15) reset();  // reshuffle when the shoe runs low
+        Card c = m_cards.back();
+        m_cards.pop_back();
+        return c;
+    }
+
+private:
+    vector<Card> m_cards;
+    mt19937 m_rng{random_device{}()};
+};
+
+class Hand {
+public:
+    void add(const Card& c) { m_cards.push_back(c); }
+    void clear() { m_cards.clear(); }
+    size_t size() const { return m_cards.size(); }
+
+    int value() const {
+        int total = 0, aces = 0;
+        for (const auto& c : m_cards) {
+            total += c.value();
+            if (c.isAce()) ++aces;
         }
+        while (total > 21 && aces-- > 0) total -= 10;
+        return total;
+    }
+    bool busted() const { return value() > 21; }
+    bool blackjack() const { return m_cards.size() == 2 && value() == 21; }
+
+    void print(bool hideSecond = false) const {
+        for (size_t i = 0; i < m_cards.size(); ++i)
+            cout << (hideSecond && i == 1 ? "[??]" : m_cards[i].str()) << ' ';
+        if (!hideSecond) cout << " = " << value();
         cout << '\n';
     }
 
-    void shuffle() {
-        std::random_shuffle(m_deck.begin(), m_deck.end());
-    }
-
-    const Card& dealCard() {
-        Card& dealtCard = m_deck.back();
-        m_deck.pop_back();
-        return dealtCard;
-    }
-};
-
-class Player {
 private:
-    vector<Card> m_hand;
-
-public:
-    void addCard(const Card& card) {
-        m_hand.push_back(card);
-    }
-
-    int getHandValue() const {
-        int totalValue = 0;
-        int numAces = 0;
-
-        for (const auto &card : m_hand) {
-            totalValue += card.getValue();
-            if (card.getValue() == 11) {
-                ++numAces;
-            }
-        }
-
-        while (totalValue > 21 && numAces > 0) {
-            totalValue -= 10;
-            --numAces;
-        }
-
-        return totalValue;
-    }
-
-    void print() const {
-        for (const auto &card : m_hand) {
-            card.print();
-            cout << ' ';
-        }
-        cout << "(Value: " << getHandValue() << ")\n";
-    }
-
-    bool isBusted() const {
-        return getHandValue() > 21;
-    }
+    vector<Card> m_cards;
 };
+
+struct Seat {
+    string name; bool bot; int bank = 500, bet = 25; Hand hand;
+};
+
+int readInt(const string& prompt, int lo, int hi) {
+    int x;
+    while (true) {
+        cout << prompt;
+        if (cin >> x && x >= lo && x <= hi) return x;
+        if (cin.eof()) exit(0);
+        cin.clear(); cin.ignore(numeric_limits<streamsize>::max(), '\n');
+        cout << "  Enter a number from " << lo << " to " << hi << ".\n";
+    }
+}
+char readChoice(const string& prompt, const string& ok) {
+    char c;
+    while (cout << prompt, cin >> c) {
+        c = static_cast<char>(tolower(c));
+        if (ok.find(c) != string::npos) return c;
+        cout << "  Choose one of: " << ok << "\n";
+    }
+    exit(0);
+}
+void show(const string& who, const Hand& h, bool hide = false) {
+    cout << "  " << who << ": "; h.print(hide);
+}
 
 int main() {
-    srand(static_cast<unsigned int>(time(0)));
-    rand();
+    cout << "===== C++ BLACKJACK: MULTIPLAYER =====\n";
+    int humans = readInt("Human players (0-4): ", 0, 4);
+    int bots = readInt("Bot players (0-" + to_string(4 - humans) + "): ", 0, 4 - humans);
+    if (humans + bots == 0) { cout << "Nobody at the table!\n"; return 0; }
+
+    vector<Seat> seats;
+    for (int i = 1; i <= humans; ++i) {
+        string n; cout << "Name for player " << i << ": "; cin >> n;
+        seats.push_back({n, false});
+    }
+    const char* botNames[] = {"Ava", "Max", "Zoe", "Leo"};
+    for (int i = 0; i < bots; ++i) seats.push_back({string(botNames[i]) + " (bot)", true});
 
     Deck deck;
-    deck.shuffle();
+    Hand dealer;
+    for (int round = 1;; ++round) {
+        seats.erase(remove_if(seats.begin(), seats.end(), [](const Seat& s) {
+            if (s.bank <= 0) cout << s.name << " is out of chips!\n";
+            return s.bank <= 0; }), seats.end());
+        if (seats.empty()) { cout << "\nEveryone is broke. Game over!\n"; break; }
 
-    Player player;
-    Player dealer;
+        cout << "\n=== Round " << round << " ===\n";
+        for (const auto& s : seats) cout << "  " << s.name << ": $" << s.bank << '\n';
+        if (readChoice("Play round? (y/n) ", "yn") == 'n') break;
 
-    player.addCard(deck.dealCard());
-    dealer.addCard(deck.dealCard());
-    player.addCard(deck.dealCard());
-    dealer.addCard(deck.dealCard());
+        for (auto& s : seats) {
+            s.hand.clear();
+            s.bet = s.bot ? min(25, s.bank)
+                          : readInt(s.name + ", bet (1-" + to_string(s.bank) + "): ", 1, s.bank);
+        }
+        dealer.clear();
+        for (int k = 0; k < 2; ++k) { for (auto& s : seats) s.hand.add(deck.deal()); dealer.add(deck.deal()); }
+        show("Dealer", dealer, true);
 
-    cout << "Dealer's hand: ";
-    dealer.print();
-    cout << "Your hand: ";
-    player.print();
+        for (auto& s : seats) {
+            cout << "\n--- " << s.name << "'s turn ---\n";
+            show("Hand", s.hand);
+            while (!s.hand.busted() && s.hand.value() < 21) {
+                char c;
+                if (s.bot) c = s.hand.value() < 17 ? 'h' : 's';
+                else {
+                    bool dbl = s.hand.size() == 2 && s.bank >= s.bet * 2;
+                    c = readChoice(dbl ? "(H)it, (S)tand, (D)ouble? " : "(H)it or (S)tand? ", dbl ? "hsd" : "hs");
+                }
+                if (c == 's') break;
+                if (c == 'd') s.bet *= 2;
+                s.hand.add(deck.deal());
+                show("Hand", s.hand);
+                if (c == 'd') break;
+            }
+            if (s.hand.busted()) cout << "  Bust!\n";
+        }
 
-    while (!player.isBusted()) {
-        char choice;
-        cout << "Do you want to hit (h) or stand (s)? ";
-        cin >> choice;
+        cout << "\n--- Dealer reveals ---\n";
+        while (dealer.value() < 17) dealer.add(deck.deal());
+        show("Dealer", dealer);
 
-        if (choice == 'h') {
-            player.addCard(deck.dealCard());
-            cout << "Your hand: ";
-            player.print();
-        } else if (choice == 's') {
-            break;
+        cout << "\n--- Results ---\n";
+        for (auto& s : seats) {
+            int p = s.hand.value(), d = dealer.value(), delta;
+            if (p > 21) delta = -s.bet;
+            else if (s.hand.blackjack() && !dealer.blackjack()) delta = s.bet * 3 / 2;
+            else if (dealer.busted() || p > d) delta = s.bet;
+            else if (p < d || dealer.blackjack()) delta = -s.bet;
+            else delta = 0;
+            s.bank += delta;
+            cout << "  " << s.name << ": " << (delta > 0 ? "WIN +$" : delta < 0 ? "LOSE -$" : "PUSH $")
+                 << abs(delta) << "  (bank $" << s.bank << ")\n";
         }
     }
-
-    if (player.isBusted()) {
-        cout << "You busted! Dealer wins.\n";
-        return 0;
-    }
-
-    cout << "Dealer's turn\n";
-    cout << "Dealer's hand: ";
-    dealer.print();
-    while (dealer.getHandValue() < 17) {
-        dealer.addCard(deck.dealCard());
-        cout << "Dealer hits: ";
-        dealer.print();
-    }
-
-    if (dealer.isBusted() || player.getHandValue() > dealer.getHandValue()) {
-        cout << "You win!\n";
-    } else if (dealer.getHandValue() > player.getHandValue()) {
-        cout << "Dealer wins.\n";
-    } else {
-        cout << "It's a tie!\n";
-    }
-
-    return 0;
+    cout << "\nFinal standings:\n";
+    sort(seats.begin(), seats.end(), [](auto& a, auto& b) { return a.bank > b.bank; });
+    for (const auto& s : seats) cout << "  " << s.name << ": $" << s.bank << '\n';
 }
