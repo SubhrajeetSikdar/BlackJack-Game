@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Blackjack Table</title>
+<link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:wght@600;800&family=Figtree:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{--felt:#1d5a49;--felt2:#154436;--ivory:#f7f3e8;--ink:#1c1c1c;--red:#b3261e;--brass:#d2a93c;--text:#f3efe2;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--felt:#123d32;--felt2:#0c2c24}}
+:root[data-theme="dark"]{--felt:#123d32;--felt2:#0c2c24}
+*{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;min-height:100vh;background:radial-gradient(ellipse at 50% 20%,var(--felt),var(--felt2));color:var(--text);font-family:Figtree,system-ui,sans-serif}
+main{max-width:980px;margin:auto;padding:18px 14px 30px;display:flex;flex-direction:column;gap:14px}
+h1{font-family:"Bodoni Moda",Georgia,serif;font-weight:800;margin:0;font-size:1.9rem}
+h2{font-size:.95rem;margin:0 0 6px;font-weight:600}
+.hand{display:flex;flex-wrap:wrap;gap:6px;min-height:92px}
+.card{width:56px;height:80px;border-radius:7px;background:var(--ivory);color:var(--ink);font-family:"Bodoni Moda",Georgia,serif;font-weight:800;display:flex;flex-direction:column;justify-content:space-between;padding:4px 6px;box-shadow:0 3px 7px rgba(0,0,0,.4)}
+.card.red{color:var(--red)}.card .r{font-size:1.1rem;line-height:1}.card .s{font-size:1.5rem;text-align:center}
+.card.back{background:repeating-linear-gradient(45deg,#7a1f2b,#7a1f2b 5px,#5e1620 5px,#5e1620 10px);border:3px solid var(--ivory)}
+.card.new{animation:deal .28s ease-out}
+@keyframes deal{from{transform:translateY(-30px) rotate(-8deg);opacity:0}to{transform:none;opacity:1}}
+@media (prefers-reduced-motion:reduce){.card.new{animation:none}}
+.tot{margin-left:6px;padding:1px 9px;border-radius:99px;background:rgba(0,0,0,.35);font-weight:600}
+#seats{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}
+.seat{padding:12px;border-radius:14px;background:rgba(0,0,0,.22);border:2px solid transparent;transition:border-color .2s,transform .2s}
+.seat.active{border-color:var(--brass);transform:translateY(-4px);box-shadow:0 0 18px rgba(210,169,60,.45)}
+.seat.out{opacity:.4}
+.seat .top{display:flex;justify-content:space-between;margin-bottom:6px}
+.badge{display:inline-block;margin-top:6px;padding:2px 10px;border-radius:99px;font-weight:600;font-size:.85rem;background:var(--ivory);color:var(--ink)}
+.badge.win{background:var(--brass)}.badge.lose{background:#8a2a2a;color:#fff}
+#msg{text-align:center;font-family:"Bodoni Moda",Georgia,serif;font-size:1.35rem;font-weight:600;min-height:2.2rem}
+.row{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;align-items:center}
+button,select,input{font:inherit;border-radius:10px;border:0;padding:10px 16px}
+button{font-weight:600;cursor:pointer;background:var(--ivory);color:var(--ink)}
+button.primary{background:var(--brass)}button:disabled{opacity:.35;cursor:not-allowed}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid #fff;outline-offset:2px}
+.chip{border-radius:99px;background:transparent;color:var(--text);border:2px dashed var(--brass);padding:4px 10px;font-size:.85rem}
+.chip.sel{background:var(--brass);color:var(--ink);border-style:solid}
+.hide{display:none!important}
+#setup{max-width:440px;margin:auto;display:flex;flex-direction:column;gap:10px}
+#setup .row{justify-content:space-between}
+kbd{background:rgba(0,0,0,.35);padding:1px 7px;border-radius:5px}
+</style>
+</head>
+<body>
+<main>
+<h1>Blackjack Table</h1>
+
+<section id="setup">
+  <p>Pick who sits at the table. Humans take turns on this device; bots play automatically.</p>
+  <div id="rows"></div>
+  <button class="primary" id="start">Start game</button>
+</section>
+
+<section id="game" class="hide">
+  <h2>Dealer <span class="tot" id="dt"></span></h2>
+  <div class="hand" id="dealer"></div>
+  <div id="msg"></div>
+  <div id="seats"></div>
+  <div class="row" id="actions" style="margin-top:14px">
+    <button id="hit">Hit <kbd>H</kbd></button><button id="stand">Stand <kbd>S</kbd></button><button id="dbl">Double <kbd>D</kbd></button>
+  </div>
+  <div class="row hide" id="betbar" style="margin-top:14px">
+    <button class="primary" id="deal">Deal <kbd>Enter</kbd></button><button id="back">Change players</button>
+  </div>
+</section>
+</main>
+<script>
+const SU=['♣','♦','♥','♠'],RK=['A','2','3','4','5','6','7','8','9','10','J','Q','K'],$=id=>document.getElementById(id);
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+let deck=[],seats=[],dealer=[],cur=-1,phase='setup',hide=true,busy=false;
+const DEF=[['Human','You'],['Bot','Ava'],['Bot','Max'],['Empty','Zoe']];
+DEF.forEach(([t,n],i)=>{const d=document.createElement('div');d.className='row';
+ d.innerHTML=`<input value="${n}" maxlength="10" aria-label="Seat ${i+1} name" style="width:40%"><select aria-label="Seat ${i+1} type">${['Human','Bot','Empty'].map(o=>`<option${o===t?' selected':''}>${o}</option>`).join('')}</select>`;
+ $('rows').append(d)});
+function mk(){deck=[];for(let s=0;s<4;s++)for(let r=0;r<13;r++)deck.push({r,s});
+ for(let i=deck.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[deck[i],deck[j]]=[deck[j],deck[i]]}}
+function draw(){if(deck.length<20)mk();const c=deck.pop();c.n=true;return c}
+const val=c=>c.r?Math.min(c.r+1,10):11;
+function tot(h){let t=0,a=0;for(const c of h){t+=val(c);if(!c.r)a++}while(t>21&&a-->0)t-=10;return t}
+function cEl(c,b){if(b)return'<div class="card back"></div>';
+ const x=c.n?' new':'';c.n=false;
+ return`<div class="card${c.s==1||c.s==2?' red':''}${x}"><span class="r">${RK[c.r]}</span><span class="s">${SU[c.s]}</span></div>`}
+function render(){
+ $('dealer').innerHTML=dealer.map((c,i)=>cEl(c,hide&&i==1)).join('');
+ $('dt').textContent=dealer.length?(hide?val(dealer[0])+'+':tot(dealer)):'';
+ $('seats').innerHTML=seats.map((p,i)=>`<div class="seat${i==cur?' active':''}${p.out?' out':''}">
+  <div class="top"><b>${p.bot?'🤖 ':'🙂 '}${p.name}</b><span>$${p.bank}</span></div>
+  <div class="hand">${p.hand.map(c=>cEl(c)).join('')}</div>
+  <div>${p.hand.length?`<span class="tot">${tot(p.hand)}</span>`:''} <span class="badge ${p.cls||'hide'}">${p.res||''}</span></div>
+  ${phase=='bet'&&!p.out?`<div class="row" style="margin-top:8px">Bet $${p.bet}: ${p.bot?'':[5,25,50,100].map(v=>`<button class="chip${p.bet==v?' sel':''}" data-i="${i}" data-v="${v}"${v>p.bank?' disabled':''}>$${v}</button>`).join('')}</div>`:''}
+  </div>`).join('');
+ const me=seats[cur],play=phase=='play'&&me&&!me.bot&&!busy;
+ $('actions').classList.toggle('hide',phase!='play');
+ ['hit','stand'].forEach(k=>$(k).disabled=!play);
+ $('dbl').disabled=!(play&&me.hand.length==2&&me.bank>=me.bet*2);
+ $('betbar').classList.toggle('hide',phase!='bet');
+}
+$('seats').onclick=e=>{const b=e.target.closest('.chip');if(!b||phase!='bet')return;seats[b.dataset.i].bet=+b.dataset.v;render()};
+$('start').onclick=()=>{seats=[...$('rows').children].map(r=>({name:r.children[0].value||'Player',type:r.children[1].value})).filter(p=>p.type!='Empty')
+ .map(p=>({name:p.name,bot:p.type=='Bot',bank:500,bet:25,hand:[],out:false}));
+ if(!seats.length)return;$('setup').classList.add('hide');$('game').classList.remove('hide');mk();toBet()};
+$('back').onclick=()=>{$('game').classList.add('hide');$('setup').classList.remove('hide');phase='setup'};
+function toBet(){$('deal').textContent='Deal';phase='bet';cur=-1;dealer=[];hide=true;
+ seats.forEach(p=>{p.hand=[];p.res='';p.cls='';p.done=false;if(p.bank<=0)p.out=true;p.bet=Math.min(p.bet,p.bank)||Math.min(25,p.bank)});
+ const alive=seats.filter(p=>!p.out);
+ if(!alive.length){$('msg').textContent='Everyone is out of chips. Game over!';$('betbar').classList.add('hide');phase='over';return render()}
+ $('msg').textContent='Choose your bets, then deal.';render()}
+$('deal').onclick=async()=>{if(phase!='bet')return;if(seats.some(p=>p.hand.length))return toBet();phase='play';busy=true;hide=true;
+ const act=seats.filter(p=>!p.out);
+ for(let k=0;k<2;k++){for(const p of act){p.hand.push(draw());render();await sleep(180)}dealer.push(draw());render();await sleep(180)}
+ act.forEach(p=>{if(tot(p.hand)==21){p.done=true;p.res='Blackjack!';p.bj=true}else p.bj=false});
+ busy=false;next(-1)};
+function next(from){
+ let i=seats.findIndex((p,j)=>j>from&&!p.out&&!p.done);
+ if(i<0){cur=-1;return dealerTurn()}
+ cur=i;const p=seats[i];$('msg').textContent=p.bot?p.name+' is thinking…':p.name+'’s turn: hit, stand or double?';render();
+ if(p.bot)bot(p)}
+async function bot(p){busy=true;render();
+ while(tot(p.hand)<(val(dealer[0])>=7?17:12)){await sleep(800);p.hand.push(draw());render()}
+ await sleep(600);busy=false;finish(p)}
+function finish(p){p.done=true;if(tot(p.hand)>21)p.res='Bust';next(cur)}
+function hit(){const p=seats[cur];p.hand.push(draw());render();if(tot(p.hand)>=21)finish(p)}
+$('hit').onclick=hit;
+$('stand').onclick=()=>finish(seats[cur]);
+$('dbl').onclick=()=>{const p=seats[cur];p.bet*=2;p.dbled=true;p.hand.push(draw());render();finish(p)};
+async function dealerTurn(){busy=true;hide=false;$('msg').textContent='Dealer reveals…';render();await sleep(900);
+ if(seats.some(p=>!p.out&&tot(p.hand)<=21&&!p.bj))while(tot(dealer)<17){dealer.push(draw());render();await sleep(900)}
+ const d=tot(dealer),dbj=d==21&&dealer.length==2;let net=0;
+ seats.filter(p=>!p.out).forEach(p=>{const t=tot(p.hand);let w;
+  if(t>21){w=-p.bet;p.res='Bust −$'+p.bet}
+  else if(p.bj&&!dbj){w=Math.floor(p.bet*1.5);p.res='Blackjack +$'+w}
+  else if(d>21||t>d){w=p.bet;p.res='Win +$'+w}
+  else if(t<d||dbj){w=-p.bet;p.res='Lose −$'+p.bet}
+  else{w=0;p.res='Push'}
+  p.cls=w>0?'win':w<0?'lose':'';p.bank+=w;p.bet=p.dbled?p.bet/2:p.bet;p.dbled=false});
+ busy=false;cur=-1;phase='bet';
+ const best=[...seats].filter(p=>!p.out).sort((a,b)=>b.bank-a.bank)[0];
+ $('msg').textContent=(d>21?'Dealer busts with '+d+'!':'Dealer has '+d+'.')+' Chip leader: '+best.name;
+ render();$('betbar').classList.remove('hide');$('deal').textContent='Next round'}
+document.addEventListener('keydown',e=>{const k=e.key.toLowerCase();
+ if(phase=='play'&&!busy&&seats[cur]&&!seats[cur].bot){if(k=='h')$('hit').click();if(k=='s')$('stand').click();if(k=='d'&&!$('dbl').disabled)$('dbl').click()}
+ else if(phase=='bet'&&e.key=='Enter'&&!$('game').classList.contains('hide'))$('deal').click()});
+</script>
+</body>
+</html>
